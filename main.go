@@ -15,6 +15,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 )
 
+// AWSKeySes is a struct holding the new key and secret
+// along with the session used to allocate the new key.  The sessions
+// can be used later to disable the old key
+type AWSKeySes struct {
+	key, secret string
+	iamclient   *iam.IAM
+}
+
 func pluralize(n int) string {
 	if n == 1 {
 		return ""
@@ -22,8 +30,9 @@ func pluralize(n int) string {
 	return "s"
 }
 
-func checkErr(err error) {
+func checkErr(context string, err error) {
 	if err != nil {
+		fmt.Fprintln(os.Stderr, context)
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
@@ -68,7 +77,7 @@ func checkArgs(rtc RTC) {
 	}
 
 }
-func rotateCreds(rtc RTC) (string, string) {
+func rotateCreds(rtc RTC) AWSKeySes {
 	creds := credentials.NewStaticCredentials(*rtc.Opts["key"], *rtc.Opts["secret"], "")
 	sess, err := session.NewSession(&aws.Config{Credentials: creds})
 	if err != nil {
@@ -78,16 +87,12 @@ func rotateCreds(rtc RTC) (string, string) {
 
 	stsClient := sts.New(sess)
 	respGetCallerIdentity, err := stsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
-	if err != nil {
-		fmt.Println("Error getting caller identity. Is the key disabled?")
-		fmt.Println()
-		checkErr(err)
-	}
+	checkErr("Error getting caller identity. Is the key disabled?", err)
 
 	username := strings.Split(*respGetCallerIdentity.Arn, "/")
 	iamClient := iam.New(sess)
 	respListAccessKeys, err := iamClient.ListAccessKeys(&iam.ListAccessKeysInput{UserName: &username[len(username)-1]})
-	checkErr(err)
+	checkErr("Failed to list Access Keys.  Does the user have the necessary IAM policy attached?", err)
 
 	if len(respListAccessKeys.AccessKeyMetadata) == 2 {
 		keyIndex := 0
@@ -98,19 +103,19 @@ func rotateCreds(rtc RTC) (string, string) {
 		_, err2 := iamClient.DeleteAccessKey(&iam.DeleteAccessKeyInput{
 			AccessKeyId: respListAccessKeys.AccessKeyMetadata[keyIndex].AccessKeyId,
 		})
-		checkErr(err2)
-		//fmt.Printf("Deleted access key %s.\n", *respListAccessKeys.AccessKeyMetadata[keyIndex].AccessKeyId)
+		checkErr("Failed to delete secondary access key!", err2)
+
 	}
 
 	respCreateAccessKey, err := iamClient.CreateAccessKey(&iam.CreateAccessKeyInput{UserName: &username[len(username)-1]})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		return "Error", "New key creation failed"
+	checkErr("New key creation failed!", err)
+
+	//return *respCreateAccessKey.AccessKey.AccessKeyId, *respCreateAccessKey.AccessKey.SecretAccessKey
+	return AWSKeySes{
+		key:       *respCreateAccessKey.AccessKey.AccessKeyId,
+		secret:    *respCreateAccessKey.AccessKey.SecretAccessKey,
+		iamclient: iamClient,
 	}
-	//fmt.Printf("Created access key %s.\n", *respCreateAccessKey.AccessKey.AccessKeyId)
-
-	return *respCreateAccessKey.AccessKey.AccessKeyId, *respCreateAccessKey.AccessKey.SecretAccessKey
-
 }
 func fileExists(filename string) bool {
 	info, err := os.Stat(filename)
@@ -119,54 +124,60 @@ func fileExists(filename string) bool {
 	}
 	return !info.IsDir()
 }
-func sedCreds(rtc RTC, newKey string, newSecret string) {
+func sedCreds(rtc RTC, newcreds AWSKeySes) {
 	// Read credentials file
 	bytes, err := ioutil.ReadFile(*rtc.Opts["output"])
-	checkErr(err)
+	checkErr(fmt.Sprintf("Failed to read file %s before replacing key and secret!", *rtc.Opts["output"]), err)
 	text := string(bytes)
 
 	re := regexp.MustCompile(fmt.Sprintf(`%s`, regexp.QuoteMeta(*rtc.Opts["key"])))
-	text = re.ReplaceAllString(text, newKey)
+	text = re.ReplaceAllString(text, newcreds.key)
 	re = regexp.MustCompile(fmt.Sprintf(`%s`, regexp.QuoteMeta(*rtc.Opts["secret"])))
-	text = re.ReplaceAllString(text, newSecret)
+	text = re.ReplaceAllString(text, newcreds.secret)
 
 	// Verify that the regexp actually replaced something
-	if !strings.Contains(text, newKey) || !strings.Contains(text, newSecret) {
+	if !strings.Contains(text, newcreds.key) || !strings.Contains(text, newcreds.secret) {
 		fmt.Printf("Erorr: Failed to replace old access key in %s", *rtc.Opts["output"])
 		os.Exit(1)
 	}
 
 	// rewrite file
 	err = ioutil.WriteFile(*rtc.Opts["output"], []byte(text), 0600)
-	checkErr(err)
+	checkErr(fmt.Sprintf("Failed to write file %s before replacing key and secret!", *rtc.Opts["output"]), err)
 	fmt.Printf("Wrote new key pair to %s\n", *rtc.Opts["output"])
 
 }
 
-// func disableKey() {
-// 	_, err = iamClient.UpdateAccessKey(&iam.UpdateAccessKeyInput{
-// 		AccessKeyId: &creds.AccessKeyID,
-// 		Status:      aws.String("Inactive"),
-// 	})
-// }
+func disableKey(rtc RTC, newcreds AWSKeySes) {
+
+	_, err := newcreds.iamclient.UpdateAccessKey(&iam.UpdateAccessKeyInput{
+		AccessKeyId: rtc.Opts["key"],
+		Status:      aws.String("Inactive"),
+	})
+	checkErr("Faiked to disable key!", err)
+}
+
 func main() {
 	// get run time config
 	rtc := Newrtc()
 
 	checkArgs(*rtc)
 
-	newKey, newSecret := rotateCreds(*rtc)
+	NewCredSes := rotateCreds(*rtc)
 
 	if fileExists(*rtc.Opts["output"]) {
-		sedCreds(*rtc, newKey, newSecret)
+		sedCreds(*rtc, NewCredSes)
 	} else {
 		switch *rtc.Opts["output"] {
 		case "json":
-			fmt.Printf("{ \"AccessKeyId\": \"%s\", \"SecretAccessKey\": \"%s\" }\n", newKey, newSecret)
+			fmt.Printf("{ \"AccessKeyId\": \"%s\", \"SecretAccessKey\": \"%s\" }\n", NewCredSes.key, NewCredSes.secret)
 		default:
-			fmt.Printf("%s %s\n", newKey, newSecret)
+			fmt.Printf("%s %s\n", NewCredSes.key, NewCredSes.secret)
 		}
 	}
 
+	if *rtc.Flag["disable"] {
+		disableKey(*rtc, NewCredSes)
+	}
 	os.Exit(0)
 }

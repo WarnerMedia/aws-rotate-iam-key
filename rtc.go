@@ -37,6 +37,7 @@ func parseCli(rtc *RTC) {
 	cli["credsFile"] = flag.String("c", "", "AWS credentials file")
 	cli["profile"] = flag.String("profile", "", "Named profile within AWS credentials file.")
 	cli["output"] = flag.String("o", "", "Output format - default is text, option json is json string, /path/to/file runs a regex on the file specified.")
+	rtc.Flag["disable"] = flag.Bool("d", false, "Disable key after rotation.")
 	rtc.Flag["version"] = flag.Bool("v", false, GetVersion())
 
 	flag.Parse()
