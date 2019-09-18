@@ -62,3 +62,13 @@ $ ./aws-rotate-iam-key -k AKIAXHGHOG2E7ZBSISP5 -s 0tujNNpqUt8Fibw0I/TPf6RY2RiFWS
 $ ./aws-rotate-iam-key -k AKIAXHGHOG2E7ZBSISP5 -s 0tujNNpqUt8Fibw0I/TPf6RY2RiFWSzuO18YZpS9 -d
 AKIAXHGHOG2E7ZBSISP5 0tujNNpqUt8Fibw0I/TPf6RY2RiFWSzuO18YZpS9
 ```
+### Rotate credentials held in MySQL in a cron job
+```
+ORIGCREDS=`echo "use mydb; select awskey,awssecret from users where u_login like 'mickeymouse'" | mysql | tail -n 1`
+AWSKEY=`echo $ORIGCREDS | awk '{ print $1 }'`
+AWSSEC=`echo $ORIGCREDS | awk '{ print $2 }'`
+NEWCREDS=$(aws-rotate-iam-key -k envAWSKEY -s envAWSSEC)
+NEWKEY=`echo $NEWCREDS | awk '{ print $1 }'
+NEWSEC=`echo $NEWCREDS | awk '{print $2 }'
+echo "use mydb; update users set awskey=$NEWKEY,awssecret=$NEWSEC where u_login like 'mickeymouse'" | mysql
+```
