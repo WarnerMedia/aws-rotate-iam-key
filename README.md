@@ -26,7 +26,7 @@ aws-rotate-iam-key makes it easy to rotate your IAM keys whether they be in your
                 "iam:*SigningCertificate*"
             ],
             "Resource": [
-                "arn:aws:iam::093513215287:user/*${aws:username}"
+                "arn:aws:iam::AwsAccountIDGoesHere:user/*${aws:username}"
             ],
             "Effect": "Allow",
             "Sid": "AllowRotateOwnKey"
