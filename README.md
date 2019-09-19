@@ -8,9 +8,32 @@ aws-rotate-iam-key makes it easy to rotate your IAM keys whether they be in your
   - Can replace rotated keys in any file - using sed like methods.
   - Optionaly disables the rotated key.
   
-### Requirements to compile - binaries available soon.
+# Requirements 
+#### to compile - binaries available soon.
     - Go
     - Make
+#### AWS Policy to apply to IAM user
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "iam:*AccessKey*",
+                "iam:ChangePassword",
+                "iam:GetUser",
+                "iam:*ServiceSpecificCredential*",
+                "iam:*SigningCertificate*"
+            ],
+            "Resource": [
+                "arn:aws:iam::093513215287:user/*${aws:username}"
+            ],
+            "Effect": "Allow",
+            "Sid": "AllowRotateOwnKey"
+        }
+    ]
+}
+``` 
 
 # Installation
     1.  Download or clone repo.  
