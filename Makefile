@@ -10,7 +10,7 @@ linux: export GOOS=linux
 darwin: export GOOS=darwin
 windows: export GOOS=windows
 
-all: linux darwin windows
+all: modules linux darwin windows
 
 linux:
 	go build $(LDFLAGS)
@@ -33,7 +33,17 @@ windows:
 	zip release/${APP}_${VERSION}-${GOOS}_${GOARCH}.zip ${APP}.exe
 	rm -f ${APP}.exe
 
+modules:
+	rm -f go.mod
+	go mod init ${APP} 	
+	go get github.com/aws/aws-sdk-go/aws
+	go get github.com/aws/aws-sdk-go/aws/credentials
+	go get github.com/aws/aws-sdk-go/aws/session
+	go get github.com/aws/aws-sdk-go/service/iam
+	go get github.com/aws/aws-sdk-go/service/sts
+
 .PHONY: clean
 clean:
 	rm -rf release
 	rm -f ${APP} ${APP}.exe
+	rm -f go.mod go.sum
