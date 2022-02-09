@@ -2,6 +2,8 @@
 
 aws-rotate-iam-key makes it easy to rotate your IAM keys whether they be in your ~/.aws/credentials file or else where.
 
+This work is a deritive of https://github.com/stefansundin/aws-rotate-key.  Added flexibility to simplify key rotation from within a shell script. 
+
 # Features!
   - Single binary with no dependencies. 
   - Runs on Linux, Windows and Mac Os
@@ -13,6 +15,9 @@ aws-rotate-iam-key makes it easy to rotate your IAM keys whether they be in your
     - Go
     - Make
 #### AWS Policy to apply to IAM user
+Please note, the policy below specifies a condition liming access from specific IP addresses.  The IP addresses will have to be
+changed before the policy can work in your environment.
+
 ```json
 {
     "Version": "2012-10-17",
@@ -29,7 +34,10 @@ aws-rotate-iam-key makes it easy to rotate your IAM keys whether they be in your
                 "arn:aws:iam::AwsAccountIDGoesHere:user/*${aws:username}"
             ],
             "Effect": "Allow",
-            "Sid": "AllowRotateOwnKey"
+            "Sid": "AllowRotateOwnKey",
+            "Condition": {
+                "IpAddress": { "aws:SourceIp": [ "52.72.140.215/32", "52.200.112.43/32", "52.200.113.35/32" ] }
+            }
         }
     ]
 }
@@ -64,26 +72,26 @@ Usage of ./aws-rotate-iam-key:
 ### Updating a key within ~/.aws/credentials, referenced by profile
 ```sh
 $ ./aws-rotate-iam-key -profile dch
-Wrote new key pair to /Users/dhamm/.aws/credentials
+Wrote new key pair to /Users/$UserName/.aws/credentials
 ```
 ### Key and secret provided on command line and output as text. ( ideal for shell scripting )
 ```sh
-$ ./aws-rotate-iam-key -k AKIAXHGHOG2E5ZZ7W7XN -s 3OwEwnWJJqjODdpNTHn6QbN6HiQPvvOUEX8cFIVK
-AKIAXHGHOG2E7ZBSISP5 0tujNNpqUt8Fibw0I/TPf6RY2RiFWSzuO18YZpS9
+$ ./aws-rotate-iam-key -k AKIAXXXXX -s xxxxxxxxxxxxxx
+AKIAXXXXX xxxxxxxxxxxxxx
 ```
 ### Key and secret provided on command line and output as json. ( handy for use with in languages like python and ruby)
 ```
-$ ./aws-rotate-iam-key -k AKIAXHGHOG2E7ZBSISP5 -s 0tujNNpqUt8Fibw0I/TPf6RY2RiFWSzuO18YZpS9 -o json
-{ "AccessKeyId": "AKIAXHGHOG2E3UBGCZC7", "SecretAccessKey": "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" }
+$ ./aws-rotate-iam-key -k AKIAXXXXX -s xxxxxxxxxxxxxx -o json
+{ "AccessKeyId": "AKIAXXXXX", "SecretAccessKey": "xxxxxxxxxxxx" }
 ```
 ### Rotate and write new creds to any file format. ( may have limitations on file size.  please limit to a few megs )
 ```
-$ ./aws-rotate-iam-key -k AKIAXHGHOG2E7ZBSISP5 -s 0tujNNpqUt8Fibw0I/TPf6RY2RiFWSzuO18YZpS9 -o /path/to/config.json
+$ ./aws-rotate-iam-key -k AKIAXXXXX -s xxxxxxxxxxxxxx -o /path/to/config.json
 ```
 ### Rotate and diable. 
 ```
-$ ./aws-rotate-iam-key -k AKIAXHGHOG2E7ZBSISP5 -s 0tujNNpqUt8Fibw0I/TPf6RY2RiFWSzuO18YZpS9 -d
-AKIAXHGHOG2E7ZBSISP5 0tujNNpqUt8Fibw0I/TPf6RY2RiFWSzuO18YZpS9
+$ ./aws-rotate-iam-key -k AKIAXXXXX -s xxxxxxxxxxxxxx -d
+AKIAXXXXX xxxxxxxxxxxxxx
 ```
 ### Rotate credentials held in MySQL in a cron job
 ```
